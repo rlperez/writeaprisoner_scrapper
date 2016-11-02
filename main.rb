@@ -1,43 +1,36 @@
 require 'nokogiri'
 require 'restclient'
 require 'mechanize'
+require 'csv'
 
 def main
   agent = Mechanize.new
-  agent.history_added = Proc.new { sleep 0.5 }
+  agent.history_added = proc { sleep 0.5 }
 
-  ('A'..'Z').each do |c|
-    page = agent.get("http://www.writeaprisoner.com/Classic/byAlpha_c.aspx?sL=#{c}")
-    page_range = page_range(page)
+  ('A'..'Z').each do |char|
+    page = agent.get("http://www.writeaprisoner.com/Classic/byAlpha_c.aspx?sL=#{char}")
+    links = links(page)
+    CSV.open('output.csv', 'w') do |c|
+      c << output_header
+      links.each do |profile|
+        vals = profile.css('.nsmText').map { |p| sanitize_page(p) }
+        c << vals.to_csv
+      end
+    end
   end
-end
-
-def pages_by_letter
-  pages = []
-
-  ('A'..'Z').each do |c|
-    pages << sanitize_page(Nokogiri::HTML(RestClient.get("http://www.writeaprisoner.com/inmate-profiles/byAlpha.aspx?sL=#{c}",
-                                                         user_agent: random_user_agent)).text)
-    sleep(rand(1..10))
-  end
-
-  pages
-end
-
-def page_range(page)
-  int_pager = int_paginator(page.css("span#CPH_Content_DataPager2").text)
-  start_index = int_pager[1].to_i
-  last_index = int_pager[2].to_i
-  (start_index..last_index)
-end
-
-def int_paginator(page)
-  number_paginator_pattern = /Viewing\sPage\s(\d{1})\D*of\D*(\d+)/
-  page.match(number_paginator_pattern)
 end
 
 def sanitize_page(page)
-  page.squeeze.gsub("\r\n", '')
+  page.squeeze.gsub("\r\n", '').strip
+end
+
+def output_header(profile)
+  profile.css('.nsmTitle').map { |p| p.content.gsub("\r\n", '').delete(':').strip }
+end
+
+def links(page)
+  page.links_with(css: 'div>div>div>div>#CPH_Content_ListFemale_itemPlaceholderContainer>div>a') +
+    page.links_with(css: 'div>div>div>div>#CPH_Content_ListMale_itemPlaceholderContainer>div>a')
 end
 
 def random_user_agent
