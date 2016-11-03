@@ -6,26 +6,49 @@ require 'csv'
 def main
   agent = Mechanize.new
   agent.history_added = proc { sleep 0.5 }
-
+  profiles = []
   ('A'..'Z').each do |char|
     page = agent.get("http://www.writeaprisoner.com/Classic/byAlpha_c.aspx?sL=#{char}")
     links = links(page)
-    CSV.open('output.csv', 'w') do |c|
-      c << output_header
-      links.each do |profile|
-        vals = profile.css('.nsmText').map { |p| sanitize_page(p) }
-        c << vals.to_csv
-      end
+    profiles << profile_data(links)
+  end
+  write_csv(profiles)
+end
+
+def profile_data(links)
+  profiles = []
+  links.each do |link|
+    profile = link.click
+    keys = profile_keys(profile) << 'Address'
+    vals = profile_vals(link) << address(profile)
+    profiles << keys.zip(vals)
+  end
+  profiles
+end
+
+def write_csv(profiles)
+  CSV.open('output_file.csv', 'w') do |c|
+    c << profiles.first[0].map{ |h| h[0] }
+    profiles.each do |profile|
+      c << profile.map{ |p| h[1] }
     end
   end
 end
 
-def sanitize_page(page)
-  page.squeeze.gsub("\r\n", '').strip
+def address(profile)
+  profile.css('#CPH_Content_LabelHeader').children.find(&:text).children.children.map(&:text).join('|')
 end
 
-def output_header(profile)
-  profile.css('.nsmTitle').map { |p| p.content.gsub("\r\n", '').delete(':').strip }
+def profile_keys(profile)
+  profile.css('.nsmTitle').map { |p| p.content.delete("\r\n", '').delete(':').strip }
+end
+
+def profile_vals(profile)
+  profile.css('.nsmText').map { |p| sanitize_page(p) }
+end
+
+def sanitize_page(page)
+  page.squeeze.gsub("\r\n", '').strip
 end
 
 def links(page)
